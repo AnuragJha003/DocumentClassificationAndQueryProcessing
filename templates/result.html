@@ -1,11 +1,24 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Classification Result</title>
+    <title>Document Query Results</title>
 </head>
 <body>
-    <h1>Document Category:</h1>
-    <p>{{ category }}</p>
-    <a href="/">Back to Upload</a>
+    <h1>Document Query Results</h1>
+
+    <h2>Extracted Entities:</h2>
+    <p><strong>Date:</strong> <span id="date"></span></p>
+    <p><strong>Organization:</strong> <span id="organization"></span></p>
+    <p><strong>Name:</strong> <span id="name"></span></p>
+
+    <script>
+        // Get the JSON response from the server
+        const response = {{ response|safe }};
+
+        // Display extracted entities
+        document.getElementById('date').textContent = response.entities.date || 'Not found';
+        document.getElementById('organization').textContent = response.entities.organization || 'Not found';
+        document.getElementById('name').textContent = response.entities.name || 'Not found';
+    </script>
 </body>
 </html>
