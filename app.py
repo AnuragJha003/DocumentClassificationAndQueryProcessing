@@ -1,137 +1,133 @@
-# Import libraries
-import PyPDF2
-import os 
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
-from flask import Flask, request, render_template, jsonify
-
-# Download NLTK resources
-nltk.download('stopwords')
+import os
+import tempfile
+import fitz  # PyMuPDF
+from flask import Flask, render_template, request, jsonify
+import regex as re
 
 app = Flask(__name__)
 
-# Load PDF text
-def extract_text_from_pdf(pdf_path):
-    pdf_text = ""
-    with open(pdf_path, 'rb') as pdf_file:
-        pdf_reader = PyPDF2.PdfReader(pdf_file)
-        for page_num in range(len(pdf_reader.pages)):
-            page = pdf_reader.pages[page_num]
-            pdf_text += page.extract_text()
-    return pdf_text
+# Define the folder where uploaded files will be temporarily stored
+UPLOAD_FOLDER = 'uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Preprocess text
-def preprocess_text(text):
-    # Convert to lowercase
-    text = text.lower()
+# Ensure the UPLOAD_FOLDER exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-    # Remove stopwords and punctuation
-    stop_words = set(stopwords.words('english'))
-    text = ' '.join([word for word in text.split() if word not in stop_words])
-
-    # Stemming
-    ps = PorterStemmer()
-    text = ' '.join([ps.stem(word) for word in text.split()])
-
-    return text
-
-# Define a synthetic labeled dataset
-def create_labeled_dataset():
-    dataset = [
-    {"text": "Medical journal article on heart disease.", "category": "medical"},
-    {"text": "Financial report for XYZ Corporation.", "category": "finance"},
-    {"text": "Travel itinerary for a business trip.", "category": "travel"},
-    {"text": "Official government tax form.", "category": "official"},
-    {"text": "Legal contract for a real estate transaction.", "category": "legal"},
-    {"text": "Sports news coverage of the World Cup.", "category": "sports"},
-    {"text": "Entertainment review of a new movie release.", "category": "entertainment"},
-    {"text": "Scientific research paper on climate change.", "category": "science"},
-    {"text": "History textbook on ancient civilizations.", "category": "education"},
-    {"text": "Cooking recipe for a classic lasagna.", "category": "food"},
-    {"text": "Technology news article about AI advancements.", "category": "technology"},
-    {"text": "Environmental report on pollution levels.", "category": "environment and health"},
-    {"text": "Travel guidebook for a European tour.", "category": "travel"},
-    {"text": "Legal case brief for a high-profile lawsuit.", "category": "legal"},
-    {"text": "Sports analysis of a championship game.", "category": "sports"},
-    {"text": "Fashion magazine article on latest trends.", "category": "fashion"},
-    {"text": "Health and wellness blog post.", "category": "health"},
-    {"text": "Political analysis of current events.", "category": "politics"},
-    {"text": "Entertainment interview with a celebrity.", "category": "entertainment"},
-    {"text": "Financial guide for personal budgeting.", "category": "finance"},
-    {"text": "Travel blog about backpacking adventures.", "category": "travel"},
-    {"text": "Medical research paper on cancer treatments.", "category": "medical"},
-    {"text": "Technology product review for a smartphone.", "category": "technology"},
-    {"text": "History book on the American Revolution.", "category": "education"},
-    {"text": "Legal document for a will and testament.", "category": "legal"},
-    {"text": "Sports commentary on a football match.", "category": "sports"},
-    {"text": "Environmental impact assessment report.", "category": "environment and health"},
-    {"text": "Fashion tips and style recommendations.", "category": "fashion"},
-    {"text": "Health and fitness magazine article.", "category": "health"},
-    {"text": "Political opinion piece on recent elections.", "category": "politics"},
-    {"text": "Music review of a new album release.", "category": "entertainment"},
-    {"text": "Investment guide for beginners.", "category": "finance"},
-    {"text": "Travel diary of a backpacker in Asia.", "category": "travel"},
-    {"text": "Medical case study on diabetes treatment.", "category": "medical"},
-    {"text": "Technology trends report for the year.", "category": "technology"},
-    {"text": "Geography textbook on world continents.", "category": "education"},
-    {"text": "Legal contract for business partnership.", "category": "legal"},
-    {"text": "Sports interview with an athlete.", "category": "sports"},
-    {"text": "Environmental policy document.", "category": "environment and health"},
-    {"text": "Fashion magazine feature on haute couture.", "category": "fashion"},
-    {"text": "Guidelines and Process flow for the event.Registeration and Team Formation.", "category": "education"},
-    {"text": "Healthy eating tips and recipes.", "category": "health"}
-        # Add more documents and categories as needed
+def extract_entities(text):
+    # Define regex patterns for date, issuing organization, and name
+    date_patterns = [
+        r'\b\d{1,4}([./-])\d{1,2}\1\d{1,4}\b',  # MM/DD/YYYY or DD/MM/YYYY or YYYY/MM/DD
+        r'\b\d{4}[./-]\d{1,2}[./-]\d{1,4}\b',  # YYYY/MM/DD or YYYY-MM-DD
+        r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}\b',  # Month DD, YYYY
+        r'\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\b',  # DD Month YYYY
+        r'\b\d{4}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\b',  # YYYY Month DD
     ]
-    return dataset
-# Main function for document classification
-def classify_document(synthetic_dataset, pdf_path):
-    # Extract text from the PDF
-    pdf_text = extract_text_from_pdf(pdf_path)
-    preprocessed_pdf_text = preprocess_text(pdf_text)
 
-    # Create synthetic labeled dataset
-    X = [entry["text"] for entry in synthetic_dataset]
-    y = [entry["category"] for entry in synthetic_dataset]
+    org_patterns = [
+        r'(?i)\b(?:organization|org|issued by|issued|issuer|institute|company|dept|department|firm)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:office|body|group|team|agency|association|corporation|bureau|division)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:university|college|school|hospital|clinic|center)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:firm|enterprise|group|agency|association|corporation|society|union|bureau)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:company|business|division|department|service|institution)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:lab|laboratory|firm|enterprise|agency|association|corporation)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:group|team|association|corporation|society|union|bureau)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:department|office|body|agency|association|corporation|division)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:institute|company|office|group|team|agency|corporation|union|division)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:center|company|department|institution|office|group|team|agency)\s*:\s*(.*?)(?:\n|\r|$)',
+    ]
 
-    # Vectorize the text using TF-IDF
-    vectorizer = TfidfVectorizer(stop_words='english')
-    X_vec = vectorizer.fit_transform(X)
-    pdf_text_vec = vectorizer.transform([preprocessed_pdf_text])
+    name_patterns = [
+        r'(?i)\b(?:name|patient name|issued to|recipient|resident|customer|client|individual|person)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:full name|given name|first name|last name|middle name|surname)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:personnel|employee|member|participant|subject|account holder)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:title|designation|position)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:contact|contact person|contact name)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:customer|client|account holder|guest)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:applicant|applicant name|participant|attendee)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:owner|owner name|holder|possessor)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:person|person name|individual|subject)\s*:\s*(.*?)(?:\n|\r|$)',
+        r'(?i)\b(?:party|party name|member|delegate)\s*:\s*(.*?)(?:\n|\r|$)',
+    ]
 
-    # Train a Naive Bayes classifier
-    classifier = MultinomialNB()
-    classifier.fit(X_vec, y)
+    # Combine patterns into a single pattern for each entity
+    date_pattern = '|'.join(date_patterns)
+    org_pattern = '|'.join(org_patterns)
+    name_pattern = '|'.join(name_patterns)
 
-    # Make predictions on the preprocessed PDF text
-    predicted_category = classifier.predict(pdf_text_vec)
+    # Search for patterns in the text
+    date_match = re.search(date_pattern, text)
+    org_match = re.search(org_pattern, text)
+    name_match = re.search(name_pattern, text)
 
-    return predicted_category[0]
-@app.route('/', methods=['GET', 'POST'])
+    # Initialize variables to None
+    date = None
+    organization = None
+    name = None
+
+    # Extract and return matched entities if not None
+    if date_match:
+        date = date_match.group(0)
+
+    if org_match:
+        organization = org_match.group(1).strip() if org_match.group(1) else None
+
+    if name_match:
+        name = name_match.group(1).strip() if name_match.group(1) else None
+
+    return {
+        'date': date,
+        'organization': organization,
+        'name': name
+    }
+
+@app.route('/')
 def index():
-    if request.method == 'POST':
-        # Check if a file was uploaded
-        uploaded_file = request.files['file']
-        if uploaded_file.filename != '':
-            # Save the uploaded file to a temporary location
-            #pdf_path = os.path.join("uploads", uploaded_file.filename)
-            pdf_path=uploaded_file.filename
-            uploaded_file.save(pdf_path)
-
-            # Perform document classification
-            synthetic_dataset = create_labeled_dataset()
-            predicted_category = classify_document(synthetic_dataset, pdf_path)
-
-            # Remove the temporary PDF file
-            os.remove(pdf_path)
-
-            return render_template('result.html', category=predicted_category)
-
     return render_template('index.html')
+
+@app.route('/process_query', methods=['POST'])
+def process_query():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'})
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'})
+
+    if file:
+        try:
+            # Save the uploaded file to the UPLOAD_FOLDER
+            filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+            file.save(filename)
+
+            # Load the document using PyMuPDF
+            doc = fitz.open(filename)
+            doc_text = ""
+            for page_num in range(doc.page_count):
+                page = doc.load_page(page_num)
+                doc_text += page.get_text()
+
+            # Extract date, organization, and name
+            extracted_entities = extract_entities(doc_text)
+
+            # Close the document to release the file
+            doc.close()
+
+            # Clean up the uploaded file
+            os.remove(filename)
+
+            # Check if organization and name are not None before stripping
+            if extracted_entities['organization'] is not None:
+                extracted_entities['organization'] = extracted_entities['organization'].strip()
+            if extracted_entities['name'] is not None:
+                extracted_entities['name'] = extracted_entities['name'].strip()
+
+            # Return a JSON response with extracted entities
+            return jsonify({'entities': extracted_entities})
+
+        except Exception as e:
+            return jsonify({'error': str(e)})
 
 if __name__ == '__main__':
     app.run(debug=True)
+
