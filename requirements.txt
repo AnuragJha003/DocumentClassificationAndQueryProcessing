@@ -39,7 +39,6 @@ fastjsonschema==2.15.3
 filelock==3.3.2
 Flask==2.2.3
 flatbuffers==23.5.26
-fsspec==2023.9.0
 gast==0.4.0
 gitdb==4.0.9
 GitPython==3.1.27
