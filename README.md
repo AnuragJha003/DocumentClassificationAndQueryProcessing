@@ -17,4 +17,4 @@ A basic Document Classification and Query Processing Site developed to be integr
 #### View Results:
 
 ###### After uploading and processing the file, you will be redirected to the results page (result.html).
-#### The category of the document will be displayed.
+#### The name,date and issuing organisation  of the document(if detected)  will be displayed.
