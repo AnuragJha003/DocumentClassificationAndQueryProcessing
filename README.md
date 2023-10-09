@@ -1,6 +1,8 @@
 # DocumentClassificationAndQueryProcessing
 A basic Document Classification and Query Processing Site developed to be integrated to the frontend of the DOQMENT.AI website for classification and query resolving on documents uploaded by the users 
 
+## DOCQUERY(2).ipynb is an additional .ipynb file which will work in the backend (not integrated to the frontend as of now ) which  uses DocQuery for document query processing and gives best results but it is not integrated to the frontend. [THIS CAN BE RUN IN COLAB SEPERATELY AND TRIED OUT WITH DIFFERENT DOCUMENTS IT GIVES PERFECT RESULTS ] . The frontend team can use this for better result as compared to the regex one provided in app.py and integrated with the html files in template folder.(Below mentioned is the regex one)
+
 ## FOR RUNNING THE APPLICATION 
 ### FIRST CLONE THE GITHUB REPO BY GOING TO YOUR DESIRED LOCATION IN THE TERMINAL AND 
 ### DOING `GIT CLONE https://github.com/AnuragJha003/DocumentClassificationAndQueryProcessing.git `
