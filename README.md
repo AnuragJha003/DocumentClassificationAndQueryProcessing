@@ -5,6 +5,8 @@ A basic Document Classification and Query Processing Site developed to be integr
 ### FIRST CLONE THE GITHUB REPO BY GOING TO YOUR DESIRED LOCATION IN THE TERMINAL AND 
 ### DOING `GIT CLONE https://github.com/AnuragJha003/DocumentClassificationAndQueryProcessing.git `
 ### Navigate to your project directory and run the Flask application:
+### The command to download and install all the dependencies  `pip install -r requirements.txt ` (all the libraries mentioned in the requirement.txt)
+### `python version >=3.8`
 ##### python app.py
 ### Access the Application:
 
